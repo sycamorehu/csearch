@@ -4,7 +4,7 @@
 #          3. set proper new variables
 # author: Zoey Hu
 # create date: 04/14/2018 
-# last update: 04/19/2018 
+# last update: 04/25/2018 
 #
 # input file: raw data 
 #            "tmp_jinyongliu_dxj_query_1.csv.csv"
@@ -16,16 +16,37 @@ library(data.table)
 library(lubridate)
 library(dplyr)
 library(stringr)
+library(ggplot2)
+library(reshape)
+library(tidyr)
 
-setwd("~/a/ctrip")
+#setwd("/home/zhiying/Dropbox\ (GaTech)/csearch")
+setwd("/Users/zyhu/Dropbox (GaTech)/csearch/project/csearch")
 Sys.setlocale("LC_ALL", 'en_US.UTF-8') # read Chinese characters
 
-
+op <- function(x){
+  opt <<- sc[, .(uid, get(x))]
+  setnames(opt, c("uid", x))
+  opt <<- opt[, .(opt2 = paste(get(x), collapse = ",")), by = uid]
+  opt[, ":=" (opt3= strsplit(opt2, split = ","), optnum = "")] 
+  
+  for (i in 1:nrow(opt)){
+    print(i)
+    aa <- as.data.frame(opt[i, opt3],col.names = x)[,1]
+    aa <- aa[which(aa!="")]
+    opt$optnum[i] <- length(unique(aa))
+  }
+  
+  opt <- opt[, c(1, 4)]
+  setnames(opt, c("uid", paste0(x,"num")))
+  return(opt)
+}
 
 ## load data ===================================================================
 
-dt <- fread("~/a/ctrip/data/raw/tmp_jinyongliu_dxj_query_1.csv", 
-                        colClasses = list(character = c(21, 34:38)))
+sc <- fread("/Users/zyhu/Dropbox (GaTech)/csearch/project/csearch/search_clean.csv")
+#sc <- fread("/home/zhiying/Dropbox\ (GaTech)/csearch/project/csearch/search_clean.csv")
+load("tmp.RData")
 
 
 
@@ -60,68 +81,8 @@ sc[price == "4", price := "￥450-600"]
 sc[price == "5", price := "￥600-1000"]
 sc[price == "6", price := "￥1000以上"]
 sc[price == "不限" | price == "-999", price := ""]
-sc[price == "￥200以下￥950以上", 
-   price := "below¥200above¥950"]
-sc[price == "￥100以上￥200以下", 
-   price := "above¥100below¥200"]
-sc[price == "￥1000以上￥500以下", 
-   price := "above¥1000below¥500"]
-sc[price == "￥326以下￥600-950￥950以上", 
-   price := "below¥326¥600-950above¥950"]
-sc[price == "￥1000以上￥200以下", 
-   price := "above¥1000below¥200"]
-sc[price == "￥1000以上￥900以下", 
-   price := "above¥1000below¥900"]
-sc[price == "￥1000以上￥400以下", 
-   price := "above¥1000below¥400"]
-sc[price == "￥1000以上￥500以下￥200-300", 
-   price := "above¥1000below¥500¥200-300"]
-sc[price == "￥950以上￥850以下", 
-   price := "above¥950below¥850"]
-sc[price == "￥600-950￥700以下￥950以上￥450-600", 
-   price := "¥600-950below¥700above¥950¥450-600"]
-sc[price == "￥200以下￥150以上", 
-   price := "below¥200above¥150"]
-sc[price == "￥1000以上￥200-300￥250以下", 
-   price := "above¥1000¥200-300below¥250"]
-sc[price == "￥1000以上￥700以下", 
-   price := "above¥1000below¥700"]
-sc[price == "￥333以下￥1000以上", 
-   price := "below¥333above¥1000"]
-sc[price == "￥250以上￥200以下", 
-   price := "above¥250below¥200"]
-sc[price == "￥600-1000￥1000以上￥300-400￥200以下￥200-300￥400-600", 
-   price := "¥600-1000above¥1000¥300-400below¥200¥200-300¥400-600"]
-sc[price == "￥50以下￥1000以上", 
-   price := "below¥50above¥1000"]
-sc[price == "￥600-1000￥1000以上￥600以下", 
-   price := "¥600-1000above¥1000below¥600"]
-sc[price == "￥200以下￥450以上", 
-   price := "below¥200above¥450"]
-sc[price == "￥1050以上￥200以下", 
-   price := "above¥1050below¥200"]
-sc[price == "￥400以下￥1050以上￥200以下", 
-   price := "below¥400above¥1050below¥200"]
-sc[price == "￥300以下￥1050以上￥200以下", 
-   price := "below¥300above¥1050below¥200"]
-sc[price == "￥200以下￥300以上", 
-   price := "below¥200above¥300"]
-sc[price == "￥200以下￥1200以上", 
-   price := "below¥200above¥1200"]
-sc[price == "￥1000以上￥300-400￥200以下", 
-   price := "above¥1000¥300-400below¥200"]
-sc[price == "￥1000以上￥800以下", 
-   price := "above¥1000below¥800"]
-sc[price == "￥50以下￥1150以上", 
-   price := "below¥50above¥1150"]
-sc[price == "￥550以上￥200以下", 
-   price := "above¥550below¥200"]
-sc[price == "￥600-1000￥1000以上￥200以下", 
-   price := "¥600-1000above¥1000below¥200"]
-sc[price %like% "以上" , price := paste("above", price)]
-sc[price %like% "以下" , price := paste("below", price)]
-sc[, price := gsub("以上", "", price)]
-sc[, price := gsub("以下", "", price)]
+sc[, price := gsub("以上", "andAbove", price)]
+sc[, price := gsub("以下", "andBelow", price)]
 sc[, price := gsub("￥", "¥", price)]
 sc[, price := gsub(" ", "", price)]
 ## check
@@ -155,6 +116,7 @@ sc[star_qry %like% "五钻/豪华", star := paste(star, "5,")]
 sc[star_qry %like% "五星/豪华", star := paste(star, "5,")]
 sc[, star := gsub("0-2, 0-2", "0-2", star)]
 sc[, star := substr(star, 1, nchar(star)-1)]
+sc[, star := gsub(" ", "", star)]
 unique(sc[star == "", star_qry])
 assign(paste("aa", "star", sep = ""), setorder(sc[, .N, by = star], -N))
 View(aastar)
@@ -339,7 +301,7 @@ sc[brand2_qry %like% "全部高端连锁" |
      brand2_qry %like% "粤海"|
      brand2_qry %like% "长荣(Evergreen)"|
      brand2_qry %like% "萨维尔"|
-     brand2_qry %like% "瑞华", brand1 := "High-end Chain,"]
+     brand2_qry %like% "瑞华", brand1 := "High,"]
 
 sc[brand2_qry %like% "全部快捷连锁" |
      brand2_qry %like% "Q+" |
@@ -382,7 +344,7 @@ sc[brand2_qry %like% "全部快捷连锁" |
      brand2_qry %like% "喆啡" |
      brand2_qry %like% "华住" |
      brand2_qry %like% "智尚" |
-     brand2_qry %like% "浦江之星", brand1 := paste("Budge Chain,", brand1)]
+     brand2_qry %like% "浦江之星", brand1 := paste("Budge,", brand1)]
 
 sc[brand2_qry %like% "全部中端连锁" |
         brand2_qry %like% "凤梧" |
@@ -413,9 +375,10 @@ sc[brand2_qry %like% "全部中端连锁" |
         brand2_qry %like% "景悦" |
         brand2_qry %like% "YUNIK" |
         brand2_qry %like% "凯莱"|
-        brand2_qry %like% "曼居", brand1 := paste(brand1, "Mid-range Chain,")]
+        brand2_qry %like% "曼居", brand1 := paste(brand1, "Mid,")]
 sc[, brand1 := substr(brand1, 1, nchar(brand1) - 1)]
-sc[brand1 == "Budge Chain,", brand1 := "Budge Chain"]
+sc[, brand1 := gsub("Budge", "Budget", brand1)]
+sc[brand1 == "Budget,", brand1 := "Budget"]
 
 unique(sc[brand1 == "", brand1_qry])
 assign(paste("aa", "brand1", sep = ""), setorder(sc[, .N, by = brand1], -N))
@@ -1016,7 +979,7 @@ sc[metro1 == "浦江线" | metro11 == "浦江线", metro11 := "Line Pujiang"]
 
 ## fix metro1
 sc <- sc[order(metro2, -metro11)]
-for (i in 1728850:nrow(sc)){
+for (i in 1743680:nrow(sc)){
   print(i)
   if (sc$metro2[i] == sc$metro2[i-1] & 
       sc$metro11[i-1] != "" & 
@@ -1032,7 +995,7 @@ View(aaametro11)
 ## usage 
 tmp <- unique(sc[, .(uid, metro11)])
 tmp1 <- tmp[metro11 != ""][, .N, by = metro11]
-sum(tmp1$N)/404813  # 3.84% (15564)
+sum(tmp1$N)/404813  # 6.13 % (24821)
 sum(tmp1$N)
 
 
@@ -1241,8 +1204,11 @@ sc <- sc[startt2]
 names(sc)
 
 ## rank
-sc[, rank := frank(starttime), by = qid_new]
+sc[, frank := frank(starttime), by = list(uid)]
 
+
+as.numeric(as_datetime(head(sc$starttime)))
+frank(head(sc$starttime))
 
 #*-- click and book ------------------------------------------------------------
 ## click and book
@@ -1416,7 +1382,21 @@ sc[, c("priceN", "starN", "keywordN", "specN", "brand1N", "brand2N", "distN",
 sp <- sc[sample(1000)]
 fwrite(sp, "check_spcrinum.csv", sep = "\t")
 
-## save ========================================================================
+## user table ==================================================================
+
+user <- data.table(unique(sc[, uid]))
+setnames(user, "uid")
+setkey(user, uid)
+
 names(sc)
+for (i in names(sc)[29:50]){
+  assign(paste("aa", i, sep = ""), setorder(sc[, .N, by = get(i)], -N))
+#  vb2 <- op(i)
+#  user <- user[vb2, on = "uid"]
+}
+
+
+
+## save ========================================================================
 save.image("tmp.RData")
 fwrite(sc, "search_clean.csv")
