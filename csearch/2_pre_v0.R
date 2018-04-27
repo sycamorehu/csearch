@@ -157,19 +157,19 @@ fct <- function(var){
   # setkey(test6, V2)
   # test6 <<- test6[aametro22[2:101, 1]]
   #plot
-  # p <<- qplot(V2, log(N2), data = test6, facets = ibook ~ iclick,
-  #             ylab = "percentage",
-  #             xlab = var,
-  #             alpha = I(0.2)) +
-  #       coord_flip() +
-  #       theme(axis.text=element_text(size=8, family="PingFang SC"))
-  p <<- qplot(x = reorder(V2, N), log(N2), data = test6,
-              facets = ibook ~ iclick,
+  p <<- qplot(V2, log(N2), data = test6, facets = ibook ~ iclick,
               ylab = "percentage",
               xlab = var,
-              alpha = I(0.1)) +
+              alpha = I(0.2)) +
         coord_flip() +
-        theme(axis.text=element_text(size=5, family="PingFang SC"))
+        theme(axis.text=element_text(size=8, family="PingFang SC"))
+  # p <<- qplot(x = reorder(V2, N), log(N2), data = test6,
+  #             facets = ibook ~ iclick,
+  #             ylab = "percentage",
+  #             xlab = var,
+  #             alpha = I(0.1)) +
+  #       coord_flip() +
+  #       theme(axis.text=element_text(size=5, family="PingFang SC"))
   p
 }
 

@@ -24,35 +24,20 @@ library(tidyr)
 setwd("/Users/zyhu/Dropbox (GaTech)/csearch/project/csearch")
 Sys.setlocale("LC_ALL", 'en_US.UTF-8') # read Chinese characters
 
-op <- function(x){
-  opt <<- sc[, .(uid, get(x))]
-  setnames(opt, c("uid", x))
-  opt <<- opt[, .(opt2 = paste(get(x), collapse = ",")), by = uid]
-  opt[, ":=" (opt3= strsplit(opt2, split = ","), optnum = "")] 
-  
-  for (i in 1:nrow(opt)){
-    print(i)
-    aa <- as.data.frame(opt[i, opt3],col.names = x)[,1]
-    aa <- aa[which(aa!="")]
-    opt$optnum[i] <- length(unique(aa))
-  }
-  
-  opt <- opt[, c(1, 4)]
-  setnames(opt, c("uid", paste0(x,"num")))
-  return(opt)
-}
 
 ## load data ===================================================================
 
 sc <- fread("/Users/zyhu/Dropbox (GaTech)/csearch/project/csearch/search_clean.csv")
 #sc <- fread("/home/zhiying/Dropbox\ (GaTech)/csearch/project/csearch/search_clean.csv")
 load("tmp.RData")
+usr <- fread("/Users/zyhu/Dropbox (GaTech)/csearch/project/csearch/user.csv")
 
 
 
 ## separate into two tables ====================================================
 
 #*-- search table: 1823430 x 27 ------------------------------------------------
+# need to add hotelnum
 sc <- unique(dt[, c(1:2, 7:31, 43)])  # remove s, h, osversion
 setkey(sc, qid_new)
 
@@ -664,6 +649,21 @@ tmp1 <- tmp[dist != ""][, .N, by = dist]
 sum(tmp1$N)/404813  # 15.01% (60780)
 sum(tmp1$N)
 
+
+#-- replace from dt
+aa <- unique(dt[, .(qid_new, dist_qry)])[, .N, by = dist_qry]
+sum(aa[, N])
+aaa <- sc[, .N, by = dist_qry]
+sum(aaa[, N])
+View(aaa)
+
+aa <- unique(dt[, .(qid_new, dist_qry)])
+setkey(sc, qid_new)
+sc <- sc[aa]
+names(sc)
+sc[, dist_qry := i.dist_qry]
+sc[, i.dist_qry := NULL]
+
 #*-- filter_score --------------------------------------------------------------
 names(sc)
 View(afilter_score)
@@ -1189,6 +1189,17 @@ sc[os == "1bdf605991920db11cbdf8508204c4eb", os2 := "iOS"]
 assign(paste("aa", "os2", sep = ""), setorder(sc[, .N, by = os2], -N))
 View(aaos2)
 
+
+#*-- NULL to blanks ------------------------------------------------------------
+sc$dist[is.na(sc$dist)] <- ""
+sc$sort[is.na(sc$sort)] <- ""
+sc$bedtype2[is.na(sc$bedtype2)] <- ""
+sc$price_min[is.na(sc$price_min)] <- ""
+sc$price_max[is.na(sc$price_max)] <- ""
+sc$price_range[is.na(sc$price_range)] <- ""
+
+
+
 ## create variables ============================================================
 
 #*-- starttime, rank -----------------------------------------------------------
@@ -1205,10 +1216,8 @@ names(sc)
 
 ## rank
 sc[, frank := frank(starttime), by = list(uid)]
-
-
-as.numeric(as_datetime(head(sc$starttime)))
-frank(head(sc$starttime))
+sc[, query_order := rank]
+sc[, rank := NULL]
 
 #*-- click and book ------------------------------------------------------------
 ## click and book
@@ -1382,21 +1391,109 @@ sc[, c("priceN", "starN", "keywordN", "specN", "brand1N", "brand2N", "distN",
 sp <- sc[sample(1000)]
 fwrite(sp, "check_spcrinum.csv", sep = "\t")
 
+
+#*-- search date, search hour --------------------------------------------------
+sc[, date := date(starttime)]
+sc[, hour := hour(starttime)]
+# check
+sc[1:10, .(starttime, date, hour)]
+
+
+#*-- self-defined sessions -----------------------------------------------------
+sc <- sc[order(uid, starttime)]
+# decide whether interval >= 30 min
+sc[, session_sep30 := 1]
+for (i in 2:nrow(sc)){
+  print(i)
+  if ((as.numeric(difftime(sc[i, starttime], 
+                           sc[i-1, starttime], 
+                           units = "mins")) <= 30 &
+       sc[i, uid] == sc[i-1, uid])){ 
+    sc[i, session_sep30 := sc[i-1, session_sep30]]
+  } else if ((as.numeric(difftime(sc[i, starttime], 
+                                  sc[i-1, starttime], 
+                                  units = "mins")) > 30 &
+              sc[i, uid] == sc[i-1, uid])){
+    sc[i, session_sep30 := sc[i-1, session_sep30] + 1]
+  } else {
+    sc[i, session_sep30 := 1]
+  }
+}
+
 ## user table ==================================================================
+
+#*-- unique options ------------------------------------------------------------
 
 user <- data.table(unique(sc[, uid]))
 setnames(user, "uid")
 setkey(user, uid)
 
+op <- function(x){
+  opt <<- sc[, .(uid, get(x))]
+  setnames(opt, c("uid", x))
+  opt <<- opt[, .(opt2 = paste(get(x), collapse = ",")), by = uid]
+  opt[, ":=" (opt3= strsplit(opt2, split = ","), optnum = "")] 
+  
+  for (i in 1:nrow(opt)){
+    print(paste(x, i))
+    aa <- as.data.frame(opt[i, opt3],col.names = x)[,1]
+    aa <- aa[which(aa!="")]
+    opt[i, optnum := length(unique(aa))]
+  }
+  
+  opt <- opt[, c(1, 4)]
+  setnames(opt, c("uid", paste0(x,"num")))
+  return(opt)
+}
+
 names(sc)
-for (i in names(sc)[29:50]){
-  assign(paste("aa", i, sep = ""), setorder(sc[, .N, by = get(i)], -N))
-#  vb2 <- op(i)
+for (i in names(sc)[48:48]){
+#  assign(paste("aa", i, sep = ""), setorder(sc[, .N, by = get(i)], -N))
+  vb2 <- op(i)
 #  user <- user[vb2, on = "uid"]
 }
+
+usr <- fread("user.csv")
+
+# test usr table
+names(usr)
+str(usr)
+setkey(sc, uid)
+aa <- sc[usr[100:200]][, c(1, 29:50, 75:96)]
+View(aa)
+
+#-- dist, bedtype, sort fix
+aa <- setkey(sc[, .(uid, sort_qry, sort)], uid)[vb2]
+setkey(usr, uid)
+usr <- usr[vb2]
+usr[, bedtype2num := i.bedtype2num]
+usr[, i.bedtype2num := NULL]
+names(usr)
+
+#*-- date, session, query ------------------------------------------------------
+
+setkey(usr, uid)
+## datenum
+udate <- setnames(unique(sc[, .(uid, date)])[, .N, by = uid], c("uid", "datenum"))
+usr <- usr[udate]
+## sessionnum
+usession <- setnames(
+  sc[, .(uid, session_sep30)][, .(session = max(session_sep30)), by = uid], 
+  c("uid", "sessionnum"))
+usr <- usr[usession]
+## querynum
+uquery <- setnames(unique(sc[, .(uid, qid_new)])[, .N, by = uid], 
+                   c("uid", "querynum"))
+usr <- usr[uquery]
+
+
+names(usr)
+
 
 
 
 ## save ========================================================================
-save.image("tmp.RData")
+rm(list=setdiff(ls(), c("dt", "sc", "usr")))
+save.image("1cleanv0.RData")
 fwrite(sc, "search_clean.csv")
+fwrite(usr, "user.csv")

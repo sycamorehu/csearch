@@ -12,6 +12,8 @@
 # - check brand1 and brand2
 # - test loop for metro11
 # - test collape into a user table
+# - test self-defined session sep
+# - test op function with df and dt
 
 library(sqldf)
 
@@ -133,6 +135,69 @@ for (i in 2:nrow(aaametro11)){
 }
 
 
+## create variables ============================================================
+
+#*-- session30 -----------------------------------------------------------------
+
+#*------ approach 1 ------------------------------------------------------------
+sc <- sc[order(uid, starttime)]
+# decide whether interval >= 30 min
+sc[, session_sep30 := 1]
+#-- approach 1
+for (i in 2: nrow(sc)){
+  print(i)
+  if ((as.numeric(difftime(sc[i, starttime], 
+                           sc[i-1, starttime], 
+                           units = "mins")) <= 30 &
+       sc[i, uid] == sc[i-1, uid])){ 
+    sc[i, session_sep30 := sc[i-1, session_sep30]]
+  } else if ((as.numeric(difftime(sc[i, starttime], 
+                                  sc[i-1, starttime], 
+                                  units = "mins")) > 30 &
+              sc[i, uid] == sc[i-1, uid])){
+    sc[i, session_sep30 := sc[i-1, session_sep30] + 1]
+  } else {
+    sc[i, session_sep30 := 1]
+  }
+}
+
+# check
+sc[1:100, .(uid, starttime, session_sep30)]
+
+#*------ approach 2 ------------------------------------------------------------
+sc <- sc[order(uid, starttime)]
+# decide whether interval >= 30 min
+sc[, session_sep30 := 1]
+for (i in 2:100){
+  print(paste("31:", i))
+  sc[i, session_sep30 := ifelse((as.numeric(difftime(sc[i, starttime], 
+                                                     sc[i-1, starttime], 
+                                                     units = "mins")) <= 30 &
+                                   sc[i, uid] == sc[i-1, uid]), 
+                                sc[i-1, session_sep30], 1)]
+}
+# decide the session number based on interval of 30 min
+for (i in 1:100){
+  print(paste("32:", i))
+  sc[i, session30 := ifelse(session_sep30 == 1, 1, sc[i-1, session30] + 1)]
+}
+# decide whether interval >= 60 min
+sc[, session_sep60 := 1]
+for (i in 2:nrow(sc)){
+  print(paste("61:", i))
+  sc[i, session_sep60 := ifelse((as.numeric(difftime(sc[i, starttime], 
+                                                     sc[i-1, starttime], 
+                                                     units = "mins")) <= 60 &
+                                   sc[i, uid] == sc[i-1, uid]), 0, 1)]
+}
+# decide the session number based on interval of 60 min
+for (i in 2: nrow(sc)){
+  print(paste("62:", i))
+  sc[i, session60 := ifelse(session_sep60 == 1, 1, sc[i-1, session60] + 1)]
+}
+
+
+
 ## user table ==================================================================
 
 tic("data.table: ")  # 17.091
@@ -183,13 +248,18 @@ for (i in names(sc)[29:30]){
 
 ## user opt
 
+user <- data.table(unique(sc[, uid]))
+setnames(user, "uid")
+setkey(user, uid)
+
+#-- with data.frame  # df:: 47.532 sec elapsed
 op <- function(x){
   opt <<- sc[, .(uid, get(x))]
   setnames(opt, c("uid", x))
   opt <<- opt[, .(opt2 = paste(get(x), collapse = ",")), by = uid]
   opt[, ":=" (opt3= strsplit(opt2, split = ","), optnum = "")] 
   
-  for (i in 1:nrow(opt)){
+  for (i in 1:100){
     print(i)
     aa <- as.data.frame(opt[i, opt3],col.names = x)[,1]
     aa <- aa[which(aa!="")]
@@ -201,3 +271,35 @@ op <- function(x){
   return(opt)
 }
 
+#-- with data table   # dt:: 4.813 sec elapsed
+op <- function(x){
+  opt <<- sc[, .(uid, get(x))]
+  setnames(opt, c("uid", x))
+  opt <<- opt[, .(opt2 = paste(get(x), collapse = ",")), by = uid]
+  opt[, ":=" (opt3= strsplit(opt2, split = ","), optnum = "")] 
+  
+  for (i in 1:100){
+    print(i)
+    aa <- as.data.frame(opt[i, opt3],col.names = x)[,1]
+    aa <- aa[which(aa!="")]
+    opt[i, optnum := length(unique(aa))]
+  }
+  
+  opt <- opt[, c(1, 4)]
+  setnames(opt, c("uid", paste0(x,"num")))
+  return(opt)
+}
+
+
+names(sc)
+tic("dt:")
+for (i in names(sc)[29:29]){
+  #  assign(paste("aa", i, sep = ""), setorder(sc[, .N, by = get(i)], -N))
+  vb2 <- op(i)
+  user <- user[vb2, on = "uid"]
+}
+toc()
+
+# check 1:100 price
+setkey(sc, uid)
+aa <- sc[user[1:100]][, .(uid, price, price_qry)]
