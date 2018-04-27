@@ -68,21 +68,18 @@ names(sc)
 
 ## time distribution ===========================================================
 
-p <- ggplot(usr, aes(datenum)) + 
-  xlim(0, 10) + 
-  xlab("number of days spent on searching")
-g <- p + geom_histogram(aes(datenum, ..density..),
+#*-- histogram: datenum, sessionnum, querynum ----------------------------------
+p <- ggplot(usr, aes(pricenum)) + 
+  xlim(-1, 10) + 
+  xlab("number of price ranges")
+g <- p + geom_histogram(aes(pricenum, ..density..),
                    binwidth = 1, 
                    fill = "#CF5B43")
-ggsave("datenum.png", g)
+g
+ggsave("pricenum_bar.png", g)
 
 
-qplot(sessionnum, data = usr,
-      geom = "density", colour = "red",
-      xlim = c(1, 10), fill = datenum) +  
-  geom_density(aes(datenum), colour = "blue")
-
-
+#*-- plot 2x2 ------------------------------------------------------------------
 fct <- function(var){
   # get unique var list
   test <- unique(usr[, .(uid, get(var))])
@@ -110,9 +107,11 @@ fct <- function(var){
   #plot
   p <<- qplot(V2, N2, data = test6, facets = ibook ~ iclick,
               ylab = "percentage",
-              xlab = "Number of sessions",
-              alpha = I(0.3)) +
-    theme(axis.text=element_text(size=8, family="PingFang SC"))
+              xlab = "number of days spent on searching",
+              alpha = I(0.8),
+              colour = "#CF5B43") +
+    theme(axis.text=element_text(size=8, family="PingFang SC")) +
+    theme(legend.position="none")
   # p <<- qplot(x = reorder(V2, N), log(N2), data = test6,
   #             facets = ibook ~ iclick,
   #             ylab = "percentage",
@@ -123,14 +122,50 @@ fct <- function(var){
   p
 }
 
-fct("sessionnum")
+fct("keywordnum")
 sum(test6[,N2])
-ggsave("fmetro22_log.png", p)
+ggsave("datenum_22.png", p)
 
-sum(aaspec[2:81, 2])/sum(aaspec[2:nrow(aaspec), 2])
-
-names(sc)
-View(aapaytype2)
+fct <- function(var){
+  # get unique var list
+  test <- unique(usr[, .(uid, get(var))])
+  setkey(test, uid)
+  # get labels of click and book
+  test2 <- sc[, .(sbook = sum(ifbook), sclick = sum(ifclick)), 
+              by = uid][, ':=' (ibook = ifelse(sbook > 0, "book", "not book"), 
+                                iclick = ifelse(sclick > 0, "click", "not click")
+              )][order(-sbook)]
+  test3 <- test2[, c(1, 4:5)]
+  setkey(test3, uid)
+  # merge
+  test4 <- test[test3]
+  # aggregate
+  test5 <<- test4[V2 != "" & !is.na(V2), .N, by = .(V2, ibook, iclick)][order(-N)]
+  test5 <- test5[ibook == "not book" & iclick == "not click", 
+                 N2 := N/sum(test5[ibook == "not book" & iclick == "not click", N])]
+  test5 <- test5[ibook == "not book" & iclick == "click", 
+                 N2 := N/sum(test5[ibook == "not book" & iclick == "click", N])]
+  test5 <<- test5[ibook == "book" & iclick == "click", 
+                  N2 := N/sum(test5[ibook == "book" & iclick == "click", N])]
+  test6 <<- test5
+  # setkey(test6, V2)
+  # test6 <<- test6[aametro22[2:101, 1]]
+  #plot
+  p <<- ggplot(test6, aes(V2, N2)) + facet_grid(ibook ~ iclick) +
+              ylab("percentage") +
+              xlab("number of days spent on searching") + 
+    geom_bar(stat = "identity", alpha = I(0.8), fill = "#CF5B43") +
+    theme(axis.text=element_text(size=8, family="PingFang SC")) +
+    theme(legend.position="none")
+  # p <<- qplot(x = reorder(V2, N), log(N2), data = test6,
+  #             facets = ibook ~ iclick,
+  #             ylab = "percentage",
+  #             xlab = var,
+  #             alpha = I(0.1)) +
+  #       coord_flip() +
+  #       theme(axis.text=element_text(size=5, family="PingFang SC"))
+  p
+}
 
 ## save ========================================================================
 save.image("2prev1.RData")
