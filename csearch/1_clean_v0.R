@@ -1264,25 +1264,32 @@ sc[, price2 := lapply(price1, as.numeric)]
 sc[, price_min := lapply(price2, min)]
 sc[price == "", price_min := ""]
 sc[, price_min := lapply(price_min, as.numeric)]
-sc[price %like% "below" , price_min := 0]
-sc[, price_min := as.numeric(price_min)]
+sc[price %like% "Below" , price_min := 0]
+#sc[, price_min := as.numeric(price_min)]
 
 sc[, price_max := lapply(price2, max)]
 sc[price == "", price_max := ""]
 sc[, price_max := lapply(price_max, as.numeric)]
-sc[price %like% "above", price_max := as.numeric(price_max) + 500]
-sc[, price_max := as.numeric(price_max)]
+sc[price %like% "Above", price_max := as.numeric(price_max) + 500]
+#sc[, price_max := as.numeric(price_max)]
 
-## price_range
+## price_range, price_mean
 sc[, price_range := as.numeric(price_max) - as.numeric(price_min)]
 sc$price_range[is.na(sc$price_range)] <- ""
+sc$price_min[is.na(sc$price_min)] <- ""
+sc$price_max[is.na(sc$price_max)] <- ""
 sc[, price1 := NULL]
 sc[, price2 := NULL]
 
+## price_mean
+sc[, price_mean := (as.numeric(price_max) + as.numeric(price_min)) / 2]
+sc$price_mean[is.na(sc$price_mean)] <- ""
+
 ## check
 sc[1:10, .(price, price_min)]
-sc[1:100, .(price, price_min, price_max, price_num, price_range)]
+sc[1:100, .(price, price_min, price_max, price_num, price_mean, price_range)]
 View(bprice_num)
+
 
 
 #*-- star ----------------------------------------------------------------------
@@ -1419,6 +1426,18 @@ for (i in 2:nrow(sc)){
     sc[i, session_sep30 := 1]
   }
 }
+
+#*-- query within sessions -----------------------------------------------------
+
+## test
+aa <- sc[1:100, .(uid, starttime, query_order, 
+                  session_sep30)][order(uid, query_order)]
+View(aa)
+aa[, squery_order := frank(query_order), by = list(uid, session_sep30)]
+
+## apply
+sc[, squery_order := frank(query_order), by = list(uid, session_sep30)]
+
 
 ## user table ==================================================================
 
