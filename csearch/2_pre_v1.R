@@ -110,7 +110,15 @@ sum(aaprice_num_uidqid[N == 1, N])  # 583 users
 aasort_qry <- setorder(sc[, .N, by = sort_qry], -N)
 names(sc)
 
-
+## advance days
+p <- qplot(advancedays, ..density.. , data = sc, 
+      geom = "histogram", 
+      binwidth = 1, 
+      xlim = c(-1, 50), 
+      xlab = "how many days in advance", 
+      fill = "#CF5B43") + 
+  theme(legend.position = "none")
+ggsave("advancedays.png", p)
 
 ## distribution ================================================================
 
