@@ -166,7 +166,7 @@ fct <- function(var){
   p
 }
 
-fct("price_mean")
+fct("advancedays")
 sum(test6[,N2])
 ggsave("grp_price_mean.png", p)
 names(usr)

@@ -1241,7 +1241,7 @@ sc[, ifbook := sapply(book, function(x) if (x > 0) 1 else 0)]
 sc[click > 1 & book > 0][1:100, 54:57]  # check
 names(sc)
 
-#*-- checkin, checkout, advance days -------------------------------------------
+#*-- checkin, checkout, advance days, stay -------------------------------------
 sc[, checkin:= lubridate::ymd(checkin)]
 sc[, checkout:= lubridate::ymd(checkout)]
 ## check
@@ -1250,6 +1250,10 @@ str(sc[, .(checkin, checkout)])
 sc[, advancedays := as.numeric(difftime(checkin, date(starttime), units = "days"))]
 ## check
 sc[1:100, .(starttime, checkin, advancedays)]
+## stay length
+sc[, staydays := as.numeric(difftime(checkout, checkin, units = "days"))]
+## check
+sc[1:100, .(starttime, checkin, checkout, advancedays, staydays)]
 
 #*-- price ---------------------------------------------------------------------
 # Hypothesis: people with proper options(e.g. 2 not 6) has highest cr
@@ -1284,6 +1288,33 @@ sc[, price2 := NULL]
 ## price_mean
 sc[, price_mean := (as.numeric(price_max) + as.numeric(price_min)) / 2]
 sc$price_mean[is.na(sc$price_mean)] <- ""
+
+## price_deviance
+fhpricebk2 <- setnames(dt[booking_bool == 1, 
+                         (price_book = mean(fh_price)), by = qid_new], 
+                      c("qid_new", "pricebk"))
+setkey(sc, qid_new)
+sc2 <- fhpricebk2[sc, on = "qid_new"]
+sc2[, price_deviance := pricebk - price_mean]
+sc <- sc2
+names(sc)
+nrow(sc2[!is.na(pricebk),])
+
+
+sc[, price_deviance := (pricebk_usd - price_mean / 6.35)*6.35]
+
+fhpricebk <- setnames(dt[booking_bool == 1, 
+                         (price_book = mean(fh_price) / 6.35), by = uid], 
+                      c("uid", "pricebk_usd"))
+price_mean <- setnames(sc[, 
+                          (price_mean = mean(price_mean, na.rm = TRUE) / 6.35), 
+                          by = uid], 
+                       c("uid", "priceset_usd"))
+nrow(price_mean[!is.na(priceset_usd),])
+usr2 <- price_mean[usr]
+usr2[, price_deviance := pricebk_usd - priceset_usd]
+usr <- usr2
+
 
 ## check
 sc[1:10, .(price, price_min)]
@@ -1443,7 +1474,7 @@ sc[, squery_order := frank(query_order), by = list(uid, session_sep30)]
 
 #*-- unique options ------------------------------------------------------------
 
-user <- data.table(unique(sc[, uid]))
+usr <- data.table(unique(sc[, uid]))
 setnames(user, "uid")
 setkey(user, uid)
 
@@ -1466,10 +1497,10 @@ op <- function(x){
 }
 
 names(sc)
-for (i in names(sc)[48:48]){
+for (i in names(sc)[29:50]){
 #  assign(paste("aa", i, sep = ""), setorder(sc[, .N, by = get(i)], -N))
   vb2 <- op(i)
-#  user <- user[vb2, on = "uid"]
+  user <- user[vb2, on = "uid"]
 }
 
 usr <- fread("user.csv")
@@ -1504,12 +1535,161 @@ usr <- usr[usession]
 uquery <- setnames(unique(sc[, .(uid, qid_new)])[, .N, by = uid], 
                    c("uid", "querynum"))
 usr <- usr[uquery]
-
-
 names(usr)
 
 
+#*-- maxsquery -----------------------------------------------------------------
+## squery ##
+maxsquery <- setnames(sc[, .(squery = max(squery_order)), 
+                         by = .(uid)], c("uid", "maxsquery"))
+usr2 <- usr[maxsquery]
+usr <- usr2
 
+#*-- number of criteria --------------------------------------------------------
+
+usr <- data.table(usr)
+usr[, criterianum := sum(ifelse(pricenum > 0, 1, 0), 
+                         ifelse(starnum > 0, 1, 0), 
+                         ifelse(keywordnum > 0, 1, 0), 
+                         ifelse(specnum > 0, 1, 0), 
+                         ifelse(brand1num > 0, 1, 0), 
+                         ifelse(brand2num > 0, 1, 0), 
+                         ifelse(distnum > 0, 1, 0), 
+                         ifelse(filterscorenum > 0, 1, 0), 
+                         ifelse(com2num > 0, 1, 0), 
+                         ifelse(facnum > 0, 1, 0), 
+                         ifelse(filterquantitynum > 0, 1, 0), 
+                         ifelse(sta2num > 0, 1, 0), 
+                         ifelse(distr2num > 0, 1, 0), 
+                         ifelse(metro11num > 0, 1, 0), 
+                         ifelse(metro22num > 0, 1, 0), 
+                         ifelse(hotd1num > 0, 1, 0), 
+                         ifelse(hotd2num > 0, 1, 0), 
+                         ifelse(sortnum > 0, 1, 0), 
+                         ifelse(bedtype2num > 0, 1, 0), 
+                         ifelse(breakfast2num > 0, 1, 0), 
+                         ifelse(paytype2num > 0, 1, 0)), 
+    by = 1:nrow(usr)]
+str(usr)
+#-- check
+usr[1:10, ]
+
+
+
+#*-- mean advancedays, staydays ------------------------------------------------
+htlt <- sc[, .(advancedays, 
+               staydays, uid)][, .(advancedays = mean(advancedays),
+                                   staydays = mean(staydays)), by = uid]
+setkey(usr, uid)
+usr <- usr[htlt]
+usr[advancedays < 0, advancedays := 0]
+
+
+#*-- label with group ----------------------------------------------------------
+#*------ browser, explore, buy type --------------------------------------------
+## !!! delete this method
+ncriteria <- sc[, .(criterianum = sum(criteria_num)), by = uid]
+setkey(usr, uid)
+usr <- usr[ncriteria]
+names(usr)
+
+## new approach
+test2 <- sc[, .(sbook = sum(ifbook), sclick = sum(ifclick)), 
+            by = uid][, ':=' (ibook = ifelse(sbook > 0, "book", "not book"), 
+                              iclick = ifelse(sclick > 0, "click", "not click")
+            )][order(-sbook)]
+test3 <- test2[, c(1, 4:5)]
+usr <- usr[test3]
+usr[, ibook := ifelse(ibook == "book", 1, 0)]
+usr[, iclick := ifelse(iclick == "click", 1, 0)]
+usr[ibook == 1 & iclick == 1, type := "buyer"]
+usr[ibook == 0 & iclick == 1, type := "explorer"]
+usr[ibook == 0 & iclick == 0, type := "browser"]
+
+#*------ os --------------------------------------------------------------------
+os <- unique(sc[, .(uid, os)])
+
+usr2[, os := ifelse(os == "1bdf605991920db11cbdf8508204c4eb", "iOS", "Android")]
+usr <- usr2
+
+#*------ datenum_type ----------------------------------------------------------
+usr[, datenum_type := ifelse(datenum == 1, "1 day", 
+                             ifelse(datenum > 1 & datenum < 4, "2-3 days",
+                                    "more than 3 days"))]
+
+#*------ criterianum_type ------------------------------------------------------
+usr[, criterianum_type := ifelse(criterianum == 0, "no criteria", 
+                             ifelse(criterianum > 0 & criterianum < 3, "1-2 criteria",
+                                    "more than 2 criteria"))]
+
+#*------ advancedays_type ------------------------------------------------------
+usr[, advancedays_type := ifelse(advancedays == 0, "book the same day",
+                                 ifelse(advancedays >0 & advancedays <8, 
+                                        "book within 1 week", 
+                                        "book earlier than 1 week"))]
+
+#*------ price viewed ----------------------------------------------------------
+fhprice <- setnames(dt[, (price = mean(fh_price) / 6.35), by = uid], 
+                    c("uid", "priceview_usd"))
+usr[, price_usd := NULL]
+usr <- usr[fhprice]
+
+#*------ price searched, purchased, deviance -----------------------------------
+fhpricebk <- setnames(dt[booking_bool == 1, 
+                         (price_book = mean(fh_price) / 6.35), by = uid], 
+                      c("uid", "pricebk_usd"))
+price_mean <- setnames(sc[, 
+                          (price_mean = mean(price_mean, na.rm = TRUE) / 6.35), 
+                          by = uid], 
+                       c("uid", "priceset_usd"))
+setkey(fhpricebk, uid)
+usr2 <- fhpricebk[usr]
+usr2[, pricebk := pricebk_usd]
+usr2[, pricebk_usd := NULL]
+setnames(usr2, "pricebk", "pricebk_usd")
+usr2 <- usr2[price_mean]
+
+usr2[, price_dev_usd := pricebk_usd - priceset_usd]
+usr <- usr2
+names(usr)
+
+#*------ price_mean sd ---------------------------------------------------------
+priceset_sd <- sc[, .(priceset_sd = sd(price_mean/6.35)), by = uid]
+setkey(usr, uid)
+usr <- usr[priceset_sd]
+
+
+#*-- whether set criteria, priceN etc. -----------------------------------------
+usr[, priceN := ifelse(pricenum != 0, 1, 0)]
+usr[, starN := ifelse(starnum != 0, 1, 0)]
+usr[, keywordN := ifelse(keywordnum != 0, 1, 0)]
+usr[, specN := ifelse(specnum != 0, 1, 0)]
+usr[, brand1N := ifelse(brand1num != 0, 1, 0)]
+usr[, brand2N := ifelse(brand2num != 0, 1, 0)]
+usr[, distN := ifelse(distnum != 0, 1, 0)]
+usr[, filterscoreN := ifelse(filterscorenum != 0, 1, 0)]
+usr[, com2N := ifelse(com2num != 0, 1, 0)]
+usr[, facN := ifelse(facnum != 0, 1, 0)]
+usr[, filterquantityN := ifelse(filterquantitynum != 0, 1, 0)]
+usr[, sta2N := ifelse(sta2num != 0, 1, 0)]
+usr[, distr2N := ifelse(distr2num != 0, 1, 0)]
+usr[, metro11N := ifelse(metro11num != 0, 1, 0)]
+usr[, metro22N := ifelse(metro22num != 0, 1, 0)]
+usr[, hotd1N := ifelse(hotd1num != 0, 1, 0)]
+usr[, hotd2N := ifelse(hotd2num != 0, 1, 0)]
+usr[, sortN := ifelse(sortnum != 0, 1, 0)]
+usr[, bedtype2N := ifelse(bedtype2num != 0, 1, 0)]
+usr[, breakfast2N := ifelse(breakfast2num != 0, 1, 0)]
+usr[, paytype2N := ifelse(paytype2num != 0, 1, 0)]
+usr[, criterianum2 := sum(priceN, starN, keywordN, specN, brand1N, brand2N, 
+                          distN, filterscoreN, com2N, facN, filterquantityN, 
+                          sta2N, distr2N, metro11N, metro22N, hotd1N, hotd2N, 
+                          sortN, bedtype2N, breakfast2N, paytype2N), 
+    by = 1:nrow(usr)]
+usr[, c("priceN", "starN", "keywordN", "specN", "brand1N", "brand2N", "distN", 
+        "filterscoreN", "com2N", "facN", "filterquantityN", "sta2N", "distr2N", 
+        "metro11N", "metro22N", "hotd1N", "hotd2N", "sortN", "bedtype2N", 
+        "breakfast2N", "paytype2N") := NULL]
 
 ## save ========================================================================
 rm(list=setdiff(ls(), c("dt", "sc", "usr")))
