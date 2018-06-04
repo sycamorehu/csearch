@@ -153,9 +153,14 @@ stargazer(htl)
 
 p1 <- ggplot(htl, aes(views, ..density..)) + 
   geom_histogram(fill = "#CF5B43", binwidth = 1) +
-  xlim(-1, 10) + 
-  xlab("Views") +
-  ylab("percentage")
+  xlab("views") +
+  ylab("percentage") + 
+  scale_x_continuous(limits = c(0, 10), breaks = c(0, 2, 4, 6, 8, 10)) +
+  theme(axis.text=element_text(size=16),
+        axis.title=element_text(size=18,face="bold"))
+ggsave("hotel.png", p1)
+                       
+     
 p2 <- ggplot(htl, aes(clicks, ..density..)) + 
   geom_histogram(fill = "#CF5B43", binwidth = 1) +
   xlim(-1, 10) + 
@@ -171,7 +176,55 @@ multiplot(p1, p2, p3, cols=3)
 
 #*-- purchase position ---------------------------------------------------------
 
+## version 2 ##
 book <- sc[, .(uid, session, squery_order, ifbook)]
+uid <- book[, .(maxsession = max(session), 
+                maxquery = max(squery_order)), by = .(ifbook, uid) ]
+uidagg1 <- uid[, .(total = .N), by = .(maxsession, maxquery)]
+uidagg1 <- uidagg1[, index := paste0(maxsession, "lalala", maxquery)]
+uidagg2 <- uid[ifbook == 1, .(Nbook = .N), by = .(maxsession, maxquery)]
+uidagg2 <- uidagg2[, index := paste0(maxsession, "lalala", maxquery)]
+uidagg <- uidagg2[uidagg1, on = "index"]
+uidagg[is.na(Nbook), Nbook := 0]
+uidagg[, cr := Nbook / total]
+uidagg2 <- uidagg
+uidagg <- uidagg[total > 10]
+names(uidagg)
+
+
+#-- plot frequency
+p <- ggplot(uidagg, aes(i.maxsession, i.maxquery)) +
+  geom_point(aes(size = total), colour = "#CF5B43") +
+  scale_size(range = c(0, 8)) +
+  xlim(0, 20) +
+  ylim(0, 50) +
+  xlab("session") +
+  ylab("query") +
+  theme(legend.position = "none") +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"))
+
+#-- plot percentage
+g <- ggplot(uidagg, aes(i.maxsession, i.maxquery)) +
+  geom_point(aes(size = cr), alpha = I(0.3),  colour = "blue") +
+  scale_size(range = c(0, 8)) +
+  xlim(0, 20) +
+  ylim(0, 50) +
+  xlab("session") +
+  ylab("query") +
+  theme(legend.position = "none") +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"))
+g2 <- ggplot(uidagg, aes(i.maxsession, i.maxquery)) +
+  geom_point(aes(size = percentage, colour = Ntotal)) 
+ggsave("purchase_position_perc4.png", g)
+ggsave("purchase_position_freq4.png", p)
+
+
+
+
+## version 1 ##
+
 bookag <- book[, .N, by = list(session, squery_order)]
 bookag[, index := paste(session, squery_order, sep = ",")]
 setnames(bookag, c("session", "query", "Ntotal", "index"))
@@ -186,22 +239,31 @@ bookag3[, query := i.query]
 bookag3[, i.session := NULL]
 bookag3[, i.query := NULL]
 bookag3[, percentage := Npurchase/Ntotal]
+bookag3 <- bookag3[Ntotal > 10]
 
 #-- plot frequency
 p <- ggplot(bookag3, aes(session, query)) +
   geom_point(aes(size = Ntotal), colour = "#CF5B43") +
   scale_size(range = c(0, 8)) +
-  theme(legend.position = "none")
+  xlim(0, 20) +
+  ylim(0, 40) +
+  theme(legend.position = "none") +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"))
 
 #-- plot percentage
 g <- ggplot(bookag3, aes(session, query)) +
   geom_point(aes(size = percentage), alpha = I(0.3),  colour = "blue") +
   scale_size(range = c(0, 8)) +
-  theme(legend.position = "none")
+  xlim(0, 20) +
+  ylim(0, 40) +
+  theme(legend.position = "none") +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"))
 g2 <- ggplot(bookag3, aes(session, query)) +
   geom_point(aes(size = percentage, colour = Ntotal)) 
-ggsave("purchase_position_perc2.png", g)
-ggsave("purchase_position_freq2.png", p)
+ggsave("purchase_position_perc3.png", g)
+ggsave("purchase_position_freq3.png", p)
 
 
 
@@ -266,36 +328,103 @@ prcdist44 <- prcdist[sessionnum < 5 & maxsquery < 5]
 sum(prcdist44[, percentage])
 
 #*-- get prc44, within-session learning: mean and range size -------------------
-prc44 <- prc[session < 5 & squery_order < 5,]
+prc44 <- prc
+type <- usr[, .(uid, type, querynum)]
+prc44 <- usr[prc44, on = "uid"]
+names(prc44)
+prc44[, squery := .N, by = uid]
+prc44 <- prc44[, frank := frank(query_order), by = list(uid)][order(uid, query_order)]
+
 #-- price_mean
-prcm44agg <- prc44[, (price = mean(price_mean)), 
-                  by = .(session, squery_order)][order(session, squery_order)]
-setnames(prcm44agg, c("session","query", "price_mean"))
-prcm44agg[, query := paste("query", query)]
-prcm44agg[, session := paste("session", session)]
-prcm44tab <- prcm44agg %>% spread(query, price_mean)
+prcm44agg4 <- prc44[squery == 4, (price = mean(price_mean)), 
+                  by = .(frank, squery,
+                         type)][order(type, frank)]
+setnames(prcm44agg4, c("query", "maxquery", "type", "price_mean"))
+prcm44agg3 <- prc44[squery == 3, (price = mean(price_mean)), 
+                    by = .(frank, squery,
+                           type)][order(type, frank)]
+setnames(prcm44agg3, c("query", "maxquery", "type", "price_mean"))
+prcm44agg2 <- prc44[squery == 2, (price = mean(price_mean)), 
+                    by = .(frank, squery,
+                           type)][order(type, frank)]
+setnames(prcm44agg2, c("query", "maxquery", "type", "price_mean"))
+prcm44agg1 <- prc44[squery == 1, (price = mean(price_mean)), 
+                    by = .(frank, squery,
+                           type)][order(type, frank)]
+setnames(prcm44agg1, c("query", "maxquery", "type", "price_mean"))
+prcm44agg <- rbind(prcm44agg1, prcm44agg2, prcm44agg3, prcm44agg4)
 
-p1 <- ggplot(prcm44agg, aes(query, price_mean, group = session)) + 
-  geom_line(aes(colour = factor(session))) +
-  xlab("Query") + ylab("mean price") +
-  ggtitle("Within-Session Learning: Mean of Price Ranges") +
-  labs(color='') 
-ggsave("price_mean_withinsession.png", p1)
 
-#-- price_range
+p1 <- ggplot(prcm44agg, aes(query, price_mean, group = maxquery, colour = factor(maxquery))) + 
+  geom_line(aes(colour = factor(maxquery)), size = 2) +
+  facet_grid(. ~ type) +
+  xlab("query") + ylab("average price") +
+#  ggtitle("Within-Session Learning: Average Price") +
+  labs(color='') +
+  theme(legend.position = "none") +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"))
+ggsave("price_mean_withinsession3.png", p1)
+
+
+
+#-- price_range version 2
+
+prcm44agg4 <- prc44[squery == 4, (price = mean(price_range)), 
+                    by = .(frank, squery,
+                           type)][order(type, frank)]
+setnames(prcm44agg4, c("query", "maxquery", "type", "price_range"))
+prcm44agg3 <- prc44[squery == 3, (price = mean(price_range)), 
+                    by = .(frank, squery,
+                           type)][order(type, frank)]
+setnames(prcm44agg3, c("query", "maxquery", "type", "price_range"))
+prcm44agg2 <- prc44[squery == 2, (price = mean(price_range)), 
+                    by = .(frank, squery,
+                           type)][order(type, frank)]
+setnames(prcm44agg2, c("query", "maxquery", "type", "price_range"))
+prcm44agg1 <- prc44[squery == 1, (price = mean(price_range)), 
+                    by = .(frank, squery,
+                           type)][order(type, frank)]
+setnames(prcm44agg1, c("query", "maxquery", "type", "price_range"))
+prcm44agg <- rbind(prcm44agg1, prcm44agg2, prcm44agg3, prcm44agg4)
+
+
+p1 <- ggplot(prcm44agg, aes(query, price_range, group = maxquery)) + 
+  geom_line(aes(colour = factor(maxquery)), size = 2) +
+  facet_grid(. ~ type) +
+  xlab("query") + ylab("price range size") +
+  #  ggtitle("Within-Session Learning: Average Price") +
+  labs(color='') +
+  theme(legend.position = "none") +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"))
+ggsave("price_range_withinsession3.png", p1)
+
+
+## check results ##
+check <- prc44[squery < 5, .(uid, squery, frank, price,
+                             price_mean, price_range)][order(uid, frank)]
+
+
+#-- price_range version 1
 prcr44agg <- prc44[, (price = mean(price_range)), 
-                   by = .(session, squery_order)][order(session, squery_order)]
-setnames(prcr44agg, c("session","query", "price_range"))
+                   by = .(squery_order, 
+                          type)][order(type, squery_order)]
+setnames(prcr44agg, c("query", "type", "price_range"))
 prcr44agg[, query := paste("query", query)]
 prcr44agg[, session := paste("session", session)]
 prcr44tab <- prcr44agg %>% spread(query, price_range)
 
-p2 <- ggplot(prcr44agg, aes(query, price_range, group = session)) + 
-  geom_line(aes(colour = factor(session))) +
-  xlab("Query") + ylab("price range size") +
+p2 <- ggplot(prcr44agg, aes(query, price_range)) + 
+  geom_line(colour = "#CF5B43", size = 2) +
+    facet_grid(. ~ type) +
+  xlab("query") + ylab("price range size") +
   ggtitle("Within-Session Learning: Price Range Sizes") +
-  labs(color='') 
-ggsave("price_range_withinsession.png", p2)
+  labs(color='')  +
+    theme(legend.position = "none") +
+    theme(axis.text=element_text(size=12),
+          axis.title=element_text(size=14,face="bold"))
+ggsave("price_range_withinsession2.png", p2)
 
 #-- price_deviance
 prcd44agg <- prc44[, (price = mean(price_dev_usd)), 
